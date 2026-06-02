@@ -56,6 +56,12 @@ module FIFO_main #(
     logic full;
     logic empty;
     
+    logic [PTR_W:0] grey_sync_write;
+    logic [PTR_W:0] grey_sync_read;
+    
+    logic rst_clk1_ff1, rst_clk1_ff2;
+    logic rst_clk2_ff1, rst_clk2_ff2;
+    
     localparam int MAX_DATA_WIDTH = (data_length_in > data_length_out) ? data_length_in : data_length_out;
     logic [MAX_DATA_WIDTH-1:0] FIFO_REGISTER [register_depth-1:0];
     
@@ -70,16 +76,26 @@ module FIFO_main #(
     assign full = (grey_write_pointer == { ~sync2_read_pointer[PTR_W:PTR_W-1], sync2_read_pointer[PTR_W-2:0] }); 
     assign empty = (sync2_write_pointer == grey_read_pointer);
     
-    always_ff @(posedge clk1 or posedge reset) begin 
+    always_ff @(posedge clk1) begin 
         if (reset) begin
+            rst_clk1_ff1 <= 1'b1;
+            rst_clk1_ff2 <= 1'b1;
+        end else begin
+            rst_clk1_ff1 <= 1'b0;
+            rst_clk1_ff2 <= rst_clk1_ff1;
+        end
+    end
+    
+    always_ff @(posedge clk1) begin 
+        if (rst_clk1_ff2) begin
             write_pointer      <= 'b0;
             sync1_read_pointer <= 'b0;
             sync2_read_pointer <= 'b0;        
         end
         else begin
-            sync1_read_pointer <= grey_read_pointer;
+            sync1_read_pointer <= grey_sync_read;
             sync2_read_pointer <= sync1_read_pointer;
-            
+            grey_sync_write <= grey_write_pointer;
             if (!full && write_en) begin
                 write_pointer <= write_pointer + 1'b1;
                 FIFO_REGISTER[write_pointer[PTR_W-1:0]][data_length_in-1:0] <= in_data;
@@ -87,16 +103,28 @@ module FIFO_main #(
         end
     end
             
+
     always_ff @(posedge clk2 or posedge reset) begin 
         if (reset) begin
+            rst_clk2_ff1 <= 1'b1;
+            rst_clk2_ff2 <= 1'b1;
+        end else begin
+            rst_clk2_ff1 <= 1'b0;
+            rst_clk2_ff2 <= rst_clk2_ff1;
+        end
+    end
+    
+    always_ff @(posedge clk2 or posedge reset) begin 
+        if (rst_clk2_ff2) begin
             out_data            <= 'b0;        
             read_pointer        <= 'b0;
             sync1_write_pointer <= 'b0;
             sync2_write_pointer <= 'b0;
         end
         else begin
-            sync1_write_pointer <= grey_write_pointer;
+            sync1_write_pointer <= grey_sync_write;
             sync2_write_pointer <= sync1_write_pointer;
+            grey_sync_read <= grey_read_pointer;
             
             if (!empty && read_en) begin
                 read_pointer <= read_pointer + 1'b1;         
